@@ -1,6 +1,6 @@
 # Employee Management System
 
-A REST API for managing employees, departments, attendance and leave requests, with JWT
+A REST API and web app for managing employees, departments, attendance and leave requests, with JWT
 authentication and role-based access for **Admin**, **HR** and **Employee** users.
 
 **Stack:** Java 17+, Spring Boot 3.5, Spring Security (stateless JWT, BCrypt), Spring Data JPA / Hibernate,
@@ -20,6 +20,29 @@ Bean Validation, MySQL (production) / H2 (zero-setup local dev), Maven, JUnit 5 
 - **Users**: Admin creates login accounts, links them to employee records, changes roles, disables
   accounts and resets passwords.
 - **Consistent errors**: every failure returns the same JSON shape (see [Error format](#error-format)).
+- **Web UI**: a single-page app served by the same server at `http://localhost:8080` (see [Web UI](#web-ui)).
+
+## Web UI
+
+Open `http://localhost:8080` after starting the app, then sign in or click one of the demo account buttons.
+The menu adapts to your role:
+
+| Page | Who | What you can do |
+|---|---|---|
+| Dashboard | Admin, HR | Headcount, today's attendance, pending leave, headcount by department |
+| Employees | Admin, HR | Search, filter by department and status, sort, page through results, add, edit, delete |
+| Departments | Everyone (Admin edits) | List, add, rename, delete empty departments |
+| Attendance | Admin, HR | Filter records by employee, date and status; add or correct records |
+| Leave requests | Admin, HR | Approve or reject pending requests with a comment |
+| Users | Admin | Create logins, change roles, link employees, disable accounts, reset passwords |
+| My attendance | Linked accounts | Check in, check out, view your history |
+| My leave | Linked accounts | Request leave, cancel pending requests, track decisions |
+| Profile | Everyone | View your details, change your password |
+
+The UI is plain HTML, CSS and JavaScript in `src/main/resources/static`, with no build step and no
+Node.js. It calls the same `/api` endpoints documented below, keeps the JWT in `sessionStorage` (so
+closing the tab signs you out), shows validation errors next to the matching form fields, and works on
+phone-sized screens.
 
 ## Running locally
 
@@ -209,13 +232,14 @@ Paginated responses look like:
 mvnw.cmd verify
 ```
 
-There are 41 tests:
+There are 43 tests:
 - **Unit tests** (Mockito, fixed `Clock`): `AttendanceServiceTest`, `LeaveServiceTest`,
   `EmployeeServiceTest`, `JwtServiceTest`.
 - **Integration tests** (full Spring context, H2, real JWT login through MockMvc):
   - `SecurityIntegrationTest`: the role matrix, 401 and 403 responses, login validation.
   - `ApiFlowIntegrationTest`: employee CRUD and validation, search/pagination/sorting, the leave
     lifecycle, check-in/out, manual attendance, dashboard numbers, department rules, user creation.
+  - `FrontendIntegrationTest`: the web UI files are public while `/api` still requires a token.
 
 ## Project layout
 
@@ -229,4 +253,6 @@ src/main/java/com/ems
 ├── security/     JWT service and filter, SecurityConfig, JSON 401/403 handler
 ├── service/      Business logic
 └── web/          REST controllers
+
+src/main/resources/static   Web UI (index.html, assets/app.js, assets/styles.css)
 ```

@@ -46,6 +46,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> {
                     auth.requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll();
                     auth.requestMatchers("/error").permitAll();
+                    // Static single-page frontend; all data still comes from the protected /api endpoints.
+                    auth.requestMatchers(HttpMethod.GET, "/", "/index.html", "/assets/**", "/favicon.svg").permitAll();
                     if (h2Console) {
                         auth.requestMatchers("/h2-console/**").permitAll();
                     }
