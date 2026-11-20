@@ -4,7 +4,7 @@
 
     // ------------------------------------------------------------------ state & helpers
     const TOKEN_KEY = 'ems.token';
-    const state = { token: null, user: null, departments: null };
+    const state = { token: null, user: null, departments: null, timers: [] };
 
     const $ = (sel, root = document) => root.querySelector(sel);
     const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -43,7 +43,102 @@
         el.className = `toast ${kind === 'error' ? 'error' : ''}`;
         el.textContent = message;
         $('#toasts').appendChild(el);
-        setTimeout(() => el.remove(), kind === 'error' ? 6000 : 3500);
+        setTimeout(() => {
+            el.classList.add('out');
+            el.addEventListener('animationend', () => el.remove(), { once: true });
+            setTimeout(() => el.remove(), 400); // fallback when animations are disabled
+        }, kind === 'error' ? 6000 : 3500);
+    }
+
+    // ------------------------------------------------------------------ interaction effects
+    const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    /** Material-style ripple on every button click. */
+    document.addEventListener('pointerdown', (e) => {
+        const btn = e.target.closest('.btn');
+        if (!btn || btn.disabled || reducedMotion()) return;
+        const rect = btn.getBoundingClientRect();
+        const size = Math.max(rect.width, rect.height);
+        const r = document.createElement('span');
+        r.className = 'ripple';
+        r.style.cssText = `width:${size}px;height:${size}px;left:${e.clientX - rect.left - size / 2}px;top:${e.clientY - rect.top - size / 2}px`;
+        btn.appendChild(r);
+        r.addEventListener('animationend', () => r.remove(), { once: true });
+    });
+
+    /** Animates numbers from 0 to their data-count value. */
+    function countUp(root) {
+        $$('[data-count]', root).forEach((el) => {
+            const target = Number(el.dataset.count);
+            if (reducedMotion() || target === 0) { el.textContent = target; return; }
+            const start = performance.now();
+            const dur = 700;
+            const tick = (now) => {
+                const p = Math.min(1, (now - start) / dur);
+                el.textContent = Math.round(target * (1 - Math.pow(1 - p, 3)));
+                if (p < 1) requestAnimationFrame(tick);
+            };
+            requestAnimationFrame(tick);
+        });
+    }
+
+    /** Bars render at 0 width, then grow to data-w on the next frame. */
+    const growBars = (root) => requestAnimationFrame(() => requestAnimationFrame(() =>
+        $$('[data-w]', root).forEach((el) => { el.style.width = el.dataset.w; })));
+
+    const setLoading = (btn, on) => { if (btn) { btn.disabled = on; btn.classList.toggle('loading', on); } };
+
+    const EYE = `<svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+        <svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.6 5.1A10.8 10.8 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.1M6.6 6.6C3.9 8.4 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="m2 2 20 20"/></svg>`;
+
+    /**
+     * Wraps every password input in root with a show/hide toggle and a Caps Lock hint.
+     * Passwords are masked by default; the toggle reveals them only while the user wants it.
+     */
+    function enhancePasswords(root) {
+        $$('input[type=password]', root).forEach((input) => {
+            if (input.parentElement.classList.contains('pw-wrap')) return;
+            const wrap = document.createElement('span');
+            wrap.className = 'pw-wrap';
+            input.replaceWith(wrap);
+            wrap.appendChild(input);
+
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'pw-toggle';
+            btn.setAttribute('aria-pressed', 'false');
+            btn.setAttribute('aria-label', 'Show password');
+            btn.title = 'Show password';
+            btn.innerHTML = EYE;
+            wrap.appendChild(btn);
+
+            btn.addEventListener('mousedown', (e) => e.preventDefault()); // keep focus (and caret) in the input
+            btn.onclick = () => {
+                const show = input.type === 'password';
+                input.type = show ? 'text' : 'password';
+                btn.setAttribute('aria-pressed', String(show));
+                btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+                btn.title = show ? 'Hide password' : 'Show password';
+                input.focus();
+                const end = input.value.length;
+                try { input.setSelectionRange(end, end); } catch { /* not supported for this type */ }
+            };
+            // never leave a password readable once the form is submitted
+            input.form?.addEventListener('submit', () => {
+                input.type = 'password';
+                btn.setAttribute('aria-pressed', 'false');
+                btn.setAttribute('aria-label', 'Show password');
+            });
+
+            const hint = document.createElement('span');
+            hint.className = 'caps-hint hidden';
+            hint.textContent = 'Caps Lock is on';
+            wrap.after(hint);
+            const caps = (e) => { if (e.getModifierState) hint.classList.toggle('hidden', !e.getModifierState('CapsLock')); };
+            input.addEventListener('keydown', caps);
+            input.addEventListener('keyup', caps);
+            input.addEventListener('blur', () => hint.classList.add('hidden'));
+        });
     }
 
     function storage(fn) {
@@ -143,13 +238,20 @@
                 </div>
             </div>`;
 
-        const close = () => { root.innerHTML = ''; document.removeEventListener('keydown', onKey); };
+        const close = () => {
+            document.removeEventListener('keydown', onKey);
+            const backdrop = $('.modal-backdrop', root);
+            if (!backdrop || reducedMotion()) { root.innerHTML = ''; return; }
+            backdrop.classList.add('closing');
+            setTimeout(() => { if (backdrop.isConnected) root.innerHTML = ''; }, 180);
+        };
         const onKey = (e) => { if (e.key === 'Escape') close(); };
         document.addEventListener('keydown', onKey);
         $('[data-cancel]', root).onclick = close;
         $('.modal-backdrop', root).addEventListener('mousedown', (e) => { if (e.target.classList.contains('modal-backdrop')) close(); });
 
         const form = $('form', root);
+        enhancePasswords(form);
         const firstInput = $('input:not([type=checkbox]), select, textarea', form);
         if (firstInput) firstInput.focus();
 
@@ -170,7 +272,7 @@
             });
 
             const btn = $('button[type=submit]', form);
-            btn.disabled = true;
+            setLoading(btn, true);
             try {
                 await onSubmit(values);
                 close();
@@ -185,7 +287,7 @@
                 const msg = err.fieldErrors.length ? unplaced.join(' ') : err.message;
                 if (msg) { errBox.textContent = msg; errBox.classList.remove('hidden'); }
             } finally {
-                btn.disabled = false;
+                setLoading(btn, false);
             }
         };
     }
@@ -225,13 +327,15 @@
             form.password.value = DEMO[b.dataset.demo];
             form.requestSubmit();
         });
+        enhancePasswords(form);
         form.username.focus();
 
         form.onsubmit = async (e) => {
             e.preventDefault();
             const errBox = $('.form-error', form);
             const btn = $('button[type=submit]', form);
-            btn.disabled = true;
+            errBox.classList.add('hidden');
+            setLoading(btn, true);
             try {
                 const res = await api('POST', '/auth/login', { username: form.username.value.trim(), password: form.password.value });
                 state.token = res.accessToken;
@@ -242,8 +346,13 @@
             } catch (err) {
                 errBox.textContent = err.fieldErrors?.length ? 'Enter your username and password.' : err.message;
                 errBox.classList.remove('hidden');
+                const card = $('.login-card');
+                card.classList.remove('shake');
+                void card.offsetWidth; // restart the animation
+                card.classList.add('shake');
+                form.password.select();
             } finally {
-                btn.disabled = false;
+                if (btn.isConnected) setLoading(btn, false);
             }
         };
     }
@@ -322,11 +431,16 @@
         }
         $$('.nav a').forEach((a) => a.classList.toggle('active', a.dataset.route === key));
         $('.shell')?.classList.remove('nav-open');
+        state.timers.forEach(clearInterval);
+        state.timers = [];
         const page = $('#page');
+        page.classList.remove('page-enter');
         page.innerHTML = '<div class="spinner">Loading…</div>';
         document.title = `${ROUTES[key].label} · EMS`;
         try {
             await ROUTES[key].render(page);
+            void page.offsetWidth; // restart the entrance animation
+            page.classList.add('page-enter');
         } catch (err) {
             if (err.status === 401) return;
             console.error(err);
@@ -380,11 +494,13 @@
 
         async function refresh(p = page) {
             page = Math.max(0, p);
-            tbody.innerHTML = `<tr><td colspan="${columns.length + 1}" class="empty">Loading…</td></tr>`;
+            const widths = [70, 55, 80, 45, 60, 50, 65];
+            tbody.innerHTML = Array.from({ length: 5 }, (_, r) => `<tr class="skeleton">${columns.map((_, c) =>
+                `<td><span class="skel" style="width:${widths[(r + c) % widths.length]}%"></span></td>`).join('')}${rowActions ? '<td></td>' : ''}</tr>`).join('');
             try {
                 const data = await load({ ...filterValues(), page, size: 10 });
                 tbody.innerHTML = data.content.length
-                    ? data.content.map((row) => `<tr>${columns.map((c) => `<td class="${c.num ? 'num' : ''} ${c.wrap ? 'wrap' : ''}">${c.render(row)}</td>`).join('')}
+                    ? data.content.map((row, i) => `<tr class="row-in" style="animation-delay:${Math.min(i, 10) * 30}ms">${columns.map((c) => `<td class="${c.num ? 'num' : ''} ${c.wrap ? 'wrap' : ''}">${c.render(row)}</td>`).join('')}
                         ${rowActions ? `<td class="actions">${rowActions(row)}</td>` : ''}</tr>`).join('')
                     : `<tr><td colspan="${columns.length + 1}" class="empty">Nothing found.</td></tr>`;
                 slot.replaceChildren(pager(data, refresh));
@@ -418,11 +534,11 @@
         page.innerHTML = `
             ${pageHead('Dashboard', `Overview for ${fmtDate(d.date)}`)}
             <div class="stats">
-                <div class="card stat"><div class="label">Total employees</div><div class="value">${d.totalEmployees}</div><div class="sub">${d.activeEmployees} active</div></div>
-                <div class="card stat"><div class="label">Present today</div><div class="value">${t.present}</div><div class="sub">${t.late} late · ${t.checkedOut} checked out</div></div>
-                <div class="card stat"><div class="label">Not checked in</div><div class="value">${t.notCheckedIn}</div><div class="sub">excluding ${d.employeesOnLeaveToday} on leave</div></div>
-                <div class="card stat"><div class="label">Pending leave</div><div class="value">${d.pendingLeaveRequests}</div><div class="sub"><a href="#/approvals">Review requests →</a></div></div>
-                <div class="card stat"><div class="label">Departments</div><div class="value">${d.totalDepartments}</div><div class="sub"><a href="#/departments">View all →</a></div></div>
+                <div class="card stat"><div class="label">Total employees</div><div class="value" data-count="${d.totalEmployees}">0</div><div class="sub">${d.activeEmployees} active</div></div>
+                <div class="card stat"><div class="label">Present today</div><div class="value" data-count="${t.present}">0</div><div class="sub">${t.late} late · ${t.checkedOut} checked out</div></div>
+                <div class="card stat"><div class="label">Not checked in</div><div class="value" data-count="${t.notCheckedIn}">0</div><div class="sub">excluding ${d.employeesOnLeaveToday} on leave</div></div>
+                <div class="card stat"><div class="label">Pending leave</div><div class="value" data-count="${d.pendingLeaveRequests}">0</div><div class="sub"><a href="#/approvals">Review requests →</a></div></div>
+                <div class="card stat"><div class="label">Departments</div><div class="value" data-count="${d.totalDepartments}">0</div><div class="sub"><a href="#/departments">View all →</a></div></div>
             </div>
             <div class="grid-2">
                 <div class="card card-pad">
@@ -430,7 +546,7 @@
                     <div class="bars">
                         ${d.headcountByDepartment.map((h) => `
                             <div class="bar-row"><span>${esc(h.departmentName)}</span>
-                                <div class="bar-track"><div class="bar-fill" style="width:${(h.headcount / max) * 100}%"></div></div>
+                                <div class="bar-track"><div class="bar-fill" data-w="${(h.headcount / max) * 100}%"></div></div>
                                 <span class="n">${h.headcount}</span></div>`).join('') || '<div class="muted">No departments yet.</div>'}
                     </div>
                 </div>
@@ -445,6 +561,8 @@
                     </dl>
                 </div>
             </div>`;
+        countUp(page);
+        growBars(page);
     }
 
     async function employeeForm(existing, onDone) {
@@ -560,23 +678,41 @@
             let action = '<button class="btn btn-primary" id="check-in">Check in</button>';
             if (rec?.checkIn && !rec.checkOut) action = '<button class="btn btn-primary" id="check-out">Check out</button>';
             if (rec?.checkOut || (rec && !rec.checkIn)) action = '<span class="muted">You\'re done for today.</span>';
+            const working = rec?.checkIn && !rec.checkOut;
             box.innerHTML = `
                 <div class="today">
                     <div><h2>Today · ${fmtDate(today())}</h2>
-                        <div style="margin-top:6px">${rec ? badge(rec.status) : '<span class="muted">Not checked in yet</span>'}</div></div>
+                        <div style="margin-top:6px">${working ? '<span class="live-dot" aria-hidden="true"></span>' : ''}${rec ? badge(rec.status) : '<span class="muted">Not checked in yet</span>'}
+                            <span class="muted clock" id="clock" style="margin-left:8px"></span></div></div>
                     <div class="times">
                         <div><span>Check in</span><strong>${fmtTime(rec?.checkIn)}</strong></div>
                         <div><span>Check out</span><strong>${fmtTime(rec?.checkOut)}</strong></div>
-                        <div><span>Worked</span><strong>${rec ? hours(rec) : '—'}</strong></div>
+                        <div><span>${working ? 'Working for' : 'Worked'}</span><strong class="clock" id="worked">${rec && !working ? hours(rec) : '—'}</strong></div>
                     </div>
                     <div>${action}</div>
                 </div>`;
-            const act = async (path, msg) => {
-                try { await api('POST', path, {}); toast(msg); await renderToday(); log.refresh(0); }
-                catch (err) { toast(err.message, 'error'); }
+
+            // live clock, plus a running "working for" timer while checked in
+            state.timers.forEach(clearInterval);
+            const tick = () => {
+                const clock = $('#clock', box);
+                if (!clock) return;
+                clock.textContent = new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                if (working) {
+                    const secs = Math.max(0, Math.floor((Date.now() - new Date(rec.checkIn).getTime()) / 1000));
+                    const pad = (n) => String(n).padStart(2, '0');
+                    $('#worked', box).textContent = `${Math.floor(secs / 3600)}:${pad(Math.floor(secs / 60) % 60)}:${pad(secs % 60)}`;
+                }
             };
-            $('#check-in', box)?.addEventListener('click', () => act('/attendance/check-in', 'Checked in'));
-            $('#check-out', box)?.addEventListener('click', () => act('/attendance/check-out', 'Checked out'));
+            tick();
+            state.timers = [setInterval(tick, 1000)];
+            const act = async (btn, path, msg) => {
+                setLoading(btn, true);
+                try { await api('POST', path, {}); toast(msg); await renderToday(); log.refresh(0); }
+                catch (err) { toast(err.message, 'error'); setLoading(btn, false); }
+            };
+            $('#check-in', box)?.addEventListener('click', (e) => act(e.currentTarget, '/attendance/check-in', 'Checked in'));
+            $('#check-out', box)?.addEventListener('click', (e) => act(e.currentTarget, '/attendance/check-out', 'Checked out'));
         };
 
         page.innerHTML = pageHead('My attendance', 'Check in when you start and check out when you finish') +
