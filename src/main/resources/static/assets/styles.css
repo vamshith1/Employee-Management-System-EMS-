@@ -427,3 +427,15 @@ tr:hover .badge { transform: scale(1.05); }
     }
     .ripple { display: none; }
 }
+
+/* ---------- Login: slow-server note ---------- */
+.form-note {
+    display: flex; gap: 10px; align-items: flex-start;
+    background: var(--primary-soft); color: var(--text);
+    border-radius: 8px; padding: 10px 12px; font-size: 13px; line-height: 1.45;
+    animation: fadeUp .3s var(--ease) both;
+}
+.mini-spinner {
+    flex: none; width: 14px; height: 14px; margin-top: 2px; border-radius: 50%;
+    border: 2px solid var(--primary); border-right-color: transparent; animation: spin .7s linear infinite;
+}

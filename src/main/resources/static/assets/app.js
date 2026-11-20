@@ -158,9 +158,15 @@
         const headers = { Accept: 'application/json' };
         if (state.token) headers.Authorization = `Bearer ${state.token}`;
         if (body !== undefined) headers['Content-Type'] = 'application/json';
-        const res = await fetch(`/api${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+        let res;
+        try {
+            res = await fetch(`/api${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+        } catch {
+            throw new ApiError(0, { message: 'Can\'t reach the server. Check your connection and try again.' });
+        }
         const text = await res.text();
-        const data = text ? JSON.parse(text) : null;
+        let data = null;
+        try { data = text ? JSON.parse(text) : null; } catch { /* e.g. an HTML page from the hosting proxy */ }
         if (res.status === 401 && path !== '/auth/login') {
             logout('Your session has expired. Please sign in again.');
             throw new ApiError(401, data);
@@ -304,10 +310,15 @@
                     <div class="brand"><span class="brand-mark">EMS</span> Employee Management</div>
                     <p class="muted" style="margin:8px 0 0">Sign in to manage employees, attendance and leave.</p>
                     <form id="login-form" novalidate>
-                        <div class="form-error ${message ? '' : 'hidden'}">${esc(message || '')}</div>
+                        <div class="form-error ${message ? '' : 'hidden'}" role="alert">${esc(message || '')}</div>
                         <label class="field">Username<input name="username" autocomplete="username" required></label>
                         <label class="field">Password<input name="password" type="password" autocomplete="current-password" required></label>
                         <button class="btn btn-primary" type="submit">Sign in</button>
+                        <div class="form-note hidden" id="slow-note" role="status">
+                            <span class="mini-spinner" aria-hidden="true"></span>
+                            <span>Waking up the server… Free hosting pauses the app when nobody uses it, so the first
+                            sign-in can take up to a minute. Later ones are instant.</span>
+                        </div>
                     </form>
                 </div>
             </div>`;
@@ -316,12 +327,33 @@
         enhancePasswords(form);
         form.username.focus();
 
+        const showError = (text) => {
+            const errBox = $('.form-error', form);
+            errBox.textContent = text;
+            errBox.classList.remove('hidden');
+            const card = $('.login-card');
+            card.classList.remove('shake');
+            void card.offsetWidth; // restart the animation
+            card.classList.add('shake');
+        };
+
         form.onsubmit = async (e) => {
             e.preventDefault();
             const errBox = $('.form-error', form);
             const btn = $('button[type=submit]', form);
+            const slowNote = $('#slow-note', form);
             errBox.classList.add('hidden');
+
+            // instant feedback, no server round trip needed
+            if (!form.username.value.trim() || !form.password.value) {
+                showError(!form.username.value.trim() ? 'Enter your username.' : 'Enter your password.');
+                (!form.username.value.trim() ? form.username : form.password).focus();
+                return;
+            }
+
             setLoading(btn, true);
+            // only if the server is slow (asleep on free hosting) explain the wait
+            const slowTimer = setTimeout(() => slowNote.classList.remove('hidden'), 2500);
             try {
                 const res = await api('POST', '/auth/login', { username: form.username.value.trim(), password: form.password.value });
                 state.token = res.accessToken;
@@ -330,14 +362,17 @@
                 location.hash = defaultRoute();
                 renderShell();
             } catch (err) {
-                errBox.textContent = err.fieldErrors?.length ? 'Enter your username and password.' : err.message;
-                errBox.classList.remove('hidden');
-                const card = $('.login-card');
-                card.classList.remove('shake');
-                void card.offsetWidth; // restart the animation
-                card.classList.add('shake');
-                form.password.select();
+                let text;
+                if (err.status === 401) text = 'Invalid username or password.';
+                else if (err.fieldErrors?.length) text = 'Enter your username and password.';
+                else if (err.status === 0) text = 'Can\'t reach the server. Check your internet connection and try again.';
+                else if (err.status >= 500) text = 'The server is still starting up. Please try again in a few seconds.';
+                else text = err.message;
+                showError(text);
+                if (err.status === 401) form.password.select();
             } finally {
+                clearTimeout(slowTimer);
+                slowNote.classList.add('hidden');
                 if (btn.isConnected) setLoading(btn, false);
             }
         };
