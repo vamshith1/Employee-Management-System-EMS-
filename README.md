@@ -89,14 +89,41 @@ SPRING_PROFILES_ACTIVE=mysql ./mvnw spring-boot:run
 
 Hibernate creates or updates the schema on startup (`ddl-auto: update`). Demo data is only inserted into an empty database.
 
+## Deploying to Render (public URL)
+
+The repo contains a [`Dockerfile`](Dockerfile) and a [`render.yaml`](render.yaml) Blueprint. Together they
+create a web service and a PostgreSQL database on Render's free plan in the Singapore region.
+
+1. Sign in at https://dashboard.render.com with GitHub.
+2. Click **New → Blueprint** and select this repository.
+3. Review the plan (a web service `employee-management-system` and a database `ems-db`) and click **Apply**.
+4. Wait for the first build to finish (about 5–10 minutes). The app is then live at
+   `https://employee-management-system-xxxx.onrender.com`.
+
+What the Blueprint sets up:
+- **`prod` profile**: PostgreSQL connection details come from the database (`DB_HOST`, `DB_PORT`,
+  `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`). The H2 console is off.
+- **`JWT_SECRET`**: a random value Render generates once. The app won't start in `prod` without a secret.
+- **Auto-deploy**: every push to `main` redeploys.
+- **`SEED_DATA=true`**: loads the demo accounts so visitors can try the app. The demo passwords are
+  public, so anyone can sign in as admin. For real data, change the passwords or set `SEED_DATA=false`
+  in the service's Environment settings before you add anything real.
+
+Free-plan limits: the web service sleeps after 15 minutes without traffic, and the first visit after that
+takes about a minute to wake it. Render deletes free PostgreSQL databases 30 days after creation unless you
+upgrade them.
+
+The PostgreSQL setup runs in the normal build: `PostgresApiFlowIntegrationTest` repeats every API flow test
+against a real embedded PostgreSQL 16.
+
 ### Configuration
 
 | Env var | Default | Purpose |
 |---|---|---|
-| `SPRING_PROFILES_ACTIVE` | `dev` | `dev` (H2) or `mysql` |
-| `DB_URL` | `jdbc:mysql://localhost:3306/ems?...` | MySQL JDBC URL |
-| `DB_USERNAME` / `DB_PASSWORD` | `ems` / `ems` | MySQL credentials |
-| `JWT_SECRET` | dev-only key | Base64 HMAC key, at least 256 bits. **Set this outside local dev.** |
+| `SPRING_PROFILES_ACTIVE` | `dev` | `dev` (H2), `mysql`, or `prod` (PostgreSQL) |
+| `DB_URL` | `jdbc:mysql://localhost:3306/ems?...` | Full JDBC URL (in `prod`, built from `DB_HOST`/`DB_PORT`/`DB_NAME` if not set) |
+| `DB_USERNAME` / `DB_PASSWORD` | `ems` / `ems` | Database credentials |
+| `JWT_SECRET` | dev-only key (none in `prod`) | Base64 HMAC key, at least 256 bits. **Required in production.** |
 | `JWT_EXPIRATION_MINUTES` | `480` | Token lifetime |
 | `SEED_DATA` | `true` | Insert demo data on an empty database |
 | `PORT` | `8080` | HTTP port |
@@ -232,7 +259,7 @@ Paginated responses look like:
 mvnw.cmd verify
 ```
 
-There are 43 tests:
+There are 52 tests:
 - **Unit tests** (Mockito, fixed `Clock`): `AttendanceServiceTest`, `LeaveServiceTest`,
   `EmployeeServiceTest`, `JwtServiceTest`.
 - **Integration tests** (full Spring context, H2, real JWT login through MockMvc):
@@ -240,6 +267,8 @@ There are 43 tests:
   - `ApiFlowIntegrationTest`: employee CRUD and validation, search/pagination/sorting, the leave
     lifecycle, check-in/out, manual attendance, dashboard numbers, department rules, user creation.
   - `FrontendIntegrationTest`: the web UI files are public while `/api` still requires a token.
+  - `PostgresApiFlowIntegrationTest`: reruns all `ApiFlowIntegrationTest` scenarios on a real embedded
+    PostgreSQL 16, the production database. No Docker needed. The binaries are downloaded once into `target/`.
 
 ## Project layout
 

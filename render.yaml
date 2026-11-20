@@ -1,0 +1,44 @@
+# Render Blueprint: creates the web app and its PostgreSQL database together.
+# Render dashboard -> New -> Blueprint -> pick this GitHub repo -> Apply.
+services:
+  - type: web
+    name: employee-management-system
+    runtime: docker
+    plan: free
+    region: singapore
+    healthCheckPath: /index.html
+    autoDeploy: true
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: JWT_SECRET
+        generateValue: true        # random 256-bit secret, generated once by Render
+      - key: SEED_DATA
+        value: "true"              # demo accounts for showcasing; set to "false" for real use
+      - key: DB_HOST
+        fromDatabase:
+          name: ems-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: ems-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: ems-db
+          property: database
+      - key: DB_USERNAME
+        fromDatabase:
+          name: ems-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: ems-db
+          property: password
+
+databases:
+  - name: ems-db
+    plan: free
+    region: singapore
+    databaseName: ems
+    user: ems
