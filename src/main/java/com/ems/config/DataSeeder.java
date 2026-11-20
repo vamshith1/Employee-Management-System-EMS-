@@ -58,12 +58,16 @@ public class DataSeeder implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
+        LocalDate today = LocalDate.now(clock);
         if (userRepository.count() > 0) {
             log.info("Database already has users; skipping demo seed data");
-            return;
+        } else {
+            seedBase(today);
         }
-        LocalDate today = LocalDate.now(clock);
+        seedDemoLeaveRequests(today);
+    }
 
+    private void seedBase(LocalDate today) {
         Department engineering = departmentRepository.save(new Department("Engineering", "Builds and runs the product"));
         Department hrDept = departmentRepository.save(new Department("Human Resources", "People operations and hiring"));
         Department sales = departmentRepository.save(new Department("Sales", "Customer acquisition and accounts"));
@@ -112,6 +116,61 @@ public class DataSeeder implements ApplicationRunner {
 
         log.info("Seeded demo data. Logins: {}/{} (ADMIN), {}/{} (HR), {}/{} (EMPLOYEE)",
                 ADMIN_USERNAME, ADMIN_PASSWORD, HR_USERNAME, HR_PASSWORD, EMPLOYEE_USERNAME, EMPLOYEE_PASSWORD);
+    }
+
+    /** Marks the extra demo set so it is only ever added once. */
+    static final String DEMO_REQUESTS_MARKER = "Sister's wedding in Jaipur";
+
+    private record DemoLeave(String email, LeaveType type, int fromDays, int toDays, String reason,
+                             LeaveStatus status, String comment) {
+    }
+
+    /**
+     * A varied set of leave requests (pending, approved, rejected, cancelled, and one person on leave
+     * today) so the approval screen and dashboard have something to show. Runs once per database,
+     * including databases seeded before this set existed; requests for missing demo employees or that
+     * would overlap existing leave are skipped.
+     */
+    private void seedDemoLeaveRequests(LocalDate today) {
+        if (leaveRepository.existsByReason(DEMO_REQUESTS_MARKER)) {
+            return;
+        }
+        User reviewer = userRepository.findByUsername(HR_USERNAME).orElse(null);
+        List<DemoLeave> demo = List.of(
+                new DemoLeave("rahul.verma@ems.local", LeaveType.ANNUAL, 7, 11, DEMO_REQUESTS_MARKER, LeaveStatus.PENDING, null),
+                new DemoLeave("kavya.nair@ems.local", LeaveType.SICK, 1, 1, "Fever, doctor advised a day of rest", LeaveStatus.PENDING, null),
+                new DemoLeave("vikram.singh@ems.local", LeaveType.CASUAL, 21, 21, "Child's school annual day", LeaveStatus.PENDING, null),
+                new DemoLeave("rohan.das@ems.local", LeaveType.UNPAID, 30, 34, "Personal travel abroad", LeaveStatus.PENDING, null),
+                new DemoLeave("priya.sharma@ems.local", LeaveType.ANNUAL, 45, 47, "Diwali at my hometown", LeaveStatus.PENDING, null),
+                new DemoLeave("rohan.das@ems.local", LeaveType.SICK, 0, 1, "Dental surgery and recovery", LeaveStatus.APPROVED, "Get well soon"),
+                new DemoLeave("neha.gupta@ems.local", LeaveType.ANNUAL, -40, -36, "Trek in Himachal", LeaveStatus.APPROVED, "Approved, enjoy the trip!"),
+                new DemoLeave("rahul.verma@ems.local", LeaveType.SICK, -12, -11, "Viral fever", LeaveStatus.APPROVED, null),
+                new DemoLeave("ananya.iyer@ems.local", LeaveType.CASUAL, -8, -8, "Personal work", LeaveStatus.REJECTED, "Quarter-end closing that day, please pick another date"),
+                new DemoLeave("arjun.mehta@ems.local", LeaveType.CASUAL, -5, -5, "Bank appointment", LeaveStatus.CANCELLED, null));
+
+        int added = 0;
+        for (DemoLeave d : demo) {
+            Employee employee = employeeRepository.findByEmailIgnoreCase(d.email()).orElse(null);
+            if (employee == null) {
+                continue;
+            }
+            LocalDate start = today.plusDays(d.fromDays());
+            LocalDate end = today.plusDays(d.toDays());
+            boolean active = d.status() == LeaveStatus.PENDING || d.status() == LeaveStatus.APPROVED;
+            if (active && leaveRepository.existsOverlapping(employee.getId(), start, end,
+                    java.util.EnumSet.of(LeaveStatus.PENDING, LeaveStatus.APPROVED))) {
+                continue;
+            }
+            LeaveRequest leave = new LeaveRequest(employee, d.type(), start, end, d.reason());
+            if (d.status() == LeaveStatus.APPROVED || d.status() == LeaveStatus.REJECTED) {
+                leave.review(d.status(), reviewer, d.comment());
+            } else {
+                leave.setStatus(d.status());
+            }
+            leaveRepository.save(leave);
+            added++;
+        }
+        log.info("Added {} demo leave requests", added);
     }
 
     private Employee employee(String first, String last, String email, String title, String salary,

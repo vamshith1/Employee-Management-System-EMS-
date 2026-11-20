@@ -259,7 +259,7 @@ Paginated responses look like:
 mvnw.cmd verify
 ```
 
-There are 52 tests:
+There are 56 tests:
 - **Unit tests** (Mockito, fixed `Clock`): `AttendanceServiceTest`, `LeaveServiceTest`,
   `EmployeeServiceTest`, `JwtServiceTest`.
 - **Integration tests** (full Spring context, H2, real JWT login through MockMvc):

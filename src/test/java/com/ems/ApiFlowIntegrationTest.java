@@ -187,6 +187,32 @@ class ApiFlowIntegrationTest extends IntegrationTestSupport {
 
         mvc.perform(auth(get("/api/attendance").param("employeeId", "2").param("status", "ABSENT"), hr))
                 .andExpect(jsonPath("$.totalElements").value(1));
+
+        // date-range filters (what the UI sends by default)
+        mvc.perform(auth(get("/api/attendance").param("from", day).param("to", day), hr))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].workDate").value(day));
+        mvc.perform(auth(get("/api/attendance").param("from", day), hr)).andExpect(status().isOk());
+        mvc.perform(auth(get("/api/attendance").param("to", day).param("status", "ABSENT"), hr))
+                .andExpect(status().isOk());
+        mvc.perform(auth(get("/api/attendance").param("from", day).param("to", LocalDate.now().minusDays(40).toString()), hr))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void ownAttendanceFilteredByDate() throws Exception {
+        String employee = employeeToken();
+        String today = LocalDate.now().toString();
+        mvc.perform(auth(post("/api/attendance/check-in"), employee)).andExpect(status().isCreated());
+
+        mvc.perform(auth(get("/api/attendance/me").param("from", today).param("to", today).param("size", "1"), employee))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].workDate").value(today));
+        mvc.perform(auth(get("/api/attendance/me").param("to", LocalDate.now().minusDays(1).toString()), employee))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(10));
     }
 
     @Test
@@ -196,11 +222,25 @@ class ApiFlowIntegrationTest extends IntegrationTestSupport {
                 .andExpect(jsonPath("$.totalEmployees").value(9))
                 .andExpect(jsonPath("$.activeEmployees").value(8))
                 .andExpect(jsonPath("$.totalDepartments").value(5))
-                .andExpect(jsonPath("$.pendingLeaveRequests").value(2))
+                .andExpect(jsonPath("$.pendingLeaveRequests").value(7))
+                .andExpect(jsonPath("$.employeesOnLeaveToday").value(1))
                 .andExpect(jsonPath("$.headcountByDepartment.length()").value(5))
                 .andExpect(jsonPath("$.headcountByDepartment[?(@.departmentName=='Engineering')].headcount").value(3))
                 .andExpect(jsonPath("$.headcountByDepartment[?(@.departmentName=='Finance')].headcount").value(1))
                 .andExpect(jsonPath("$.headcountByDepartment[?(@.departmentName=='Marketing')].headcount").value(0));
+    }
+
+    @Test
+    void demoLeaveRequestsCoverEveryStatus() throws Exception {
+        String hr = hrToken();
+        for (String s : new String[]{"PENDING", "APPROVED", "REJECTED", "CANCELLED"}) {
+            mvc.perform(auth(get("/api/leaves").param("status", s), hr))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.totalElements", greaterThan(0)));
+        }
+        mvc.perform(auth(get("/api/leaves").param("status", "REJECTED"), hr))
+                .andExpect(jsonPath("$.content[0].reviewedBy").value("hr"))
+                .andExpect(jsonPath("$.content[0].reviewComment", not(emptyOrNullString())));
     }
 
     @Test
