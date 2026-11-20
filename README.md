@@ -24,7 +24,7 @@ Bean Validation, MySQL (production) / H2 (zero-setup local dev), Maven, JUnit 5 
 
 ## Web UI
 
-Open `http://localhost:8080` after starting the app, then sign in or click one of the demo account buttons.
+Open `http://localhost:8080` after starting the app and sign in (see [Demo accounts](#demo-accounts) for local development).
 The menu adapts to your role:
 
 | Page | Who | What you can do |
@@ -105,9 +105,10 @@ What the Blueprint sets up:
   `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`). The H2 console is off.
 - **`JWT_SECRET`**: a random value Render generates once. The app won't start in `prod` without a secret.
 - **Auto-deploy**: every push to `main` redeploys.
-- **`SEED_DATA=true`**: loads the demo accounts so visitors can try the app. The demo passwords are
-  public, so anyone can sign in as admin. For real data, change the passwords or set `SEED_DATA=false`
-  in the service's Environment settings before you add anything real.
+- **`SEED_DATA=true`**: loads the sample data and the accounts listed under [Demo accounts](#demo-accounts).
+  The login page doesn't show them, but their starting passwords are in this public repo. **After the first
+  deploy, sign in and change every seeded account's password** (Profile → Change password, or Users →
+  Reset password as admin). Set `SEED_DATA=false` if you don't want sample data at all.
 
 Free-plan limits: the web service sleeps after 15 minutes without traffic, and the first visit after that
 takes about a minute to wake it. Render deletes free PostgreSQL databases 30 days after creation unless you
@@ -137,7 +138,7 @@ against a real embedded PostgreSQL 16.
 | EMPLOYEE | `employee` | `Employee@123` | Arjun Mehta, Software Engineer |
 
 The seed also creates 5 departments, 9 employees (one inactive), 10 weekdays of attendance history and a
-few leave requests. These passwords are public. Change them or set `SEED_DATA=false` for any shared deployment.
+few leave requests. These starting passwords are public: change them on any shared deployment, or set `SEED_DATA=false`.
 
 ## Using the API
 

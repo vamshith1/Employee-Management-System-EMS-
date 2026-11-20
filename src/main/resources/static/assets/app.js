@@ -309,24 +309,10 @@
                         <label class="field">Password<input name="password" type="password" autocomplete="current-password" required></label>
                         <button class="btn btn-primary" type="submit">Sign in</button>
                     </form>
-                    <div class="demo">
-                        <div class="muted" style="font-size:13px">Demo accounts (seed data)</div>
-                        <div class="demo-buttons">
-                            <button class="btn btn-sm" data-demo="admin">Admin</button>
-                            <button class="btn btn-sm" data-demo="hr">HR</button>
-                            <button class="btn btn-sm" data-demo="employee">Employee</button>
-                        </div>
-                    </div>
                 </div>
             </div>`;
 
         const form = $('#login-form');
-        const DEMO = { admin: 'Admin@123', hr: 'Hr@12345', employee: 'Employee@123' };
-        $$('[data-demo]').forEach((b) => b.onclick = () => {
-            form.username.value = b.dataset.demo;
-            form.password.value = DEMO[b.dataset.demo];
-            form.requestSubmit();
-        });
         enhancePasswords(form);
         form.username.focus();
 
