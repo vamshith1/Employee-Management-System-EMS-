@@ -307,7 +307,7 @@
         $('#app').innerHTML = `
             <div class="login-wrap">
                 <div class="login-card">
-                    <div class="brand"><span class="brand-mark">EMS</span> Employee Management</div>
+                    ${brand()}
                     <p class="muted" style="margin:8px 0 0">Sign in to manage employees, attendance and leave.</p>
                     <form id="login-form" novalidate>
                         <div class="form-error ${message ? '' : 'hidden'}" role="alert">${esc(message || '')}</div>
@@ -415,8 +415,9 @@
 
         $('#app').innerHTML = `
             <div class="shell">
-                <aside class="sidebar">
-                    <div class="brand"><span class="brand-mark">EMS</span> Employee Mgmt</div>
+                <div class="nav-scrim" aria-hidden="true"></div>
+                <aside class="sidebar" id="sidebar">
+                    ${brand()}
                     <nav class="nav">
                         ${Object.entries(groups).map(([g, items]) => `
                             <div class="nav-label">${esc(g)}</div>
@@ -431,17 +432,49 @@
                 </aside>
                 <div>
                     <div class="topbar">
-                        <button class="btn btn-sm" id="menu" aria-label="Open menu">☰ Menu</button>
-                        <div class="brand"><span class="brand-mark">EMS</span></div>
+                        <button class="btn btn-sm" id="menu" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false">☰ Menu</button>
+                        ${brand({ compact: true })}
                     </div>
                     <main class="main" id="page"></main>
                 </div>
             </div>`;
 
         $('#logout').onclick = () => logout();
-        $('#menu').onclick = () => $('.shell').classList.toggle('nav-open');
+        $('#menu').onclick = () => setNav(!$('.shell').classList.contains('nav-open'));
+        // one tap anywhere outside the open menu closes it
+        $('.nav-scrim').addEventListener('click', () => setNav(false));
         route();
     }
+
+    /** Opens or closes the slide-in menu on small screens. */
+    function setNav(open) {
+        const shell = $('.shell');
+        if (!shell) return;
+        shell.classList.toggle('nav-open', open);
+        const btn = $('#menu');
+        btn?.setAttribute('aria-expanded', String(open));
+        btn?.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && $('.shell.nav-open') && !$('.modal-backdrop')) setNav(false);
+    });
+
+    // ------------------------------------------------------------------ logo
+    const LOGO_SVG = `<svg viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+        <path d="M16 13.2v3.3M9.5 19v-2.5h13V19" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".85"/>
+        <circle cx="16" cy="9.6" r="3.6" fill="#fff"/>
+        <circle cx="9.5" cy="22.4" r="3.1" fill="#fff" opacity=".92"/>
+        <circle cx="22.5" cy="22.4" r="3.1" fill="#fff" opacity=".92"/>
+    </svg>`;
+
+    /** Logo mark plus the "EMS / Employee Management" wordmark. */
+    const brand = ({ compact = false } = {}) => `
+        <div class="brand" aria-label="EMS, Employee Management">
+            <span class="brand-mark">${LOGO_SVG}</span>
+            ${compact ? '<span class="brand-name">EMS</span>' : `
+            <span class="brand-text"><span class="brand-name">EMS</span><span class="brand-sub">Employee Management</span></span>`}
+        </div>`;
 
     async function route() {
         if (!state.user) return;
@@ -451,7 +484,7 @@
             return;
         }
         $$('.nav a').forEach((a) => a.classList.toggle('active', a.dataset.route === key));
-        $('.shell')?.classList.remove('nav-open');
+        setNav(false);
         state.timers.forEach(clearInterval);
         state.timers = [];
         const page = $('#page');
